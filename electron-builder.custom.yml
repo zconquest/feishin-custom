@@ -1,0 +1,42 @@
+electronVersion: 43.7.0
+files:
+    - 'out/**/*'
+    - 'package.json'
+npmRebuild: false
+appId: org.zconquest.feishin.custom
+productName: Feishin Custom
+artifactName: 'Feishin-Custom-${version}-${os}-${arch}.${ext}'
+directories:
+    output: release/custom
+    buildResources: assets
+win:
+    target:
+        - target: nsis
+          arch: [x64]
+        - target: zip
+          arch: [x64]
+    icon: assets/icons/icon.ico
+    signAndEditExecutable: false
+nsis:
+    perMachine: false
+    allowToChangeInstallationDirectory: true
+    oneClick: false
+    shortcutName: Feishin Custom
+    uninstallDisplayName: Feishin Custom
+    createDesktopShortcut: always
+extraResources:
+    - assets/**
+    - from: distribution/notices
+      to: notices
+    - from: scripts/word-lyrics-engine
+      to: word-lyrics-engine
+      filter: ['*.py', 'requirements.txt', 'README.md']
+    - from: distribution/Register-Word-Lyrics-Runtime.ps1
+      to: Register-Word-Lyrics-Runtime.ps1
+    - from: SHARING.md
+      to: SHARING.md
+publish:
+    provider: github
+    owner: zconquest
+    repo: feishin-custom
+    releaseType: release

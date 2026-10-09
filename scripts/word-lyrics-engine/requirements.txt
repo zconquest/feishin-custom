@@ -1,0 +1,9 @@
+# Install torch/torchaudio from the appropriate PyTorch CUDA wheel index first.
+# Install whisperx==3.8.6 with --no-deps: this worker uses only its aligner, not ASR/diarization.
+torch==2.8.0
+torchaudio==2.8.0
+numpy==2.2.6
+pandas==2.3.3
+nltk==3.9.2
+transformers==4.57.3
+demucs==4.0.1

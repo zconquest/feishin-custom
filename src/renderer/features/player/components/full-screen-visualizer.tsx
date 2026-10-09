@@ -1,0 +1,199 @@
+import clsx from 'clsx';
+import { motion, Variants } from 'motion/react';
+import { lazy, memo, ReactNode, Suspense, useEffect, useLayoutEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router';
+
+import styles from './full-screen-visualizer.module.css';
+
+import { Lyrics } from '/@/renderer/features/lyrics/lyrics';
+import { FullScreenVisualizerSongInfo } from '/@/renderer/features/player/components/full-screen-visualizer-song-info';
+import {
+    toggleFullscreen,
+    VISUALIZER_FULLSCREEN_TARGET_ID,
+} from '/@/renderer/hooks/use-fullscreen-toggle';
+import { useHotkeys } from '/@/renderer/hooks/use-hotkeys';
+import { useIsMobile } from '/@/renderer/hooks/use-is-mobile';
+import {
+    useFullScreenPlayerStore,
+    useFullScreenPlayerStoreActions,
+} from '/@/renderer/store/full-screen-player.store';
+import {
+    usePlaybackSettings,
+    useSettingsStore,
+    useWindowSettings,
+} from '/@/renderer/store/settings.store';
+import { ActionIcon } from '/@/shared/components/action-icon/action-icon';
+import { Group } from '/@/shared/components/group/group';
+import { Platform } from '/@/shared/types/types';
+
+const AudioMotionAnalyzerVisualizer = lazy(() =>
+    import('../../visualizer/components/audiomotionanalyzer/visualizer').then((module) => ({
+        default: module.Visualizer,
+    })),
+);
+
+const ButterchurnVisualizer = lazy(() =>
+    import('../../visualizer/components/butternchurn/visualizer').then((module) => ({
+        default: module.Visualizer,
+    })),
+);
+
+const containerVariants: Variants = {
+    closed: {
+        transition: {
+            duration: 0.5,
+            ease: 'easeInOut',
+        },
+        y: '100%',
+    },
+    open: {
+        transition: {
+            delay: 0.1,
+            duration: 0.5,
+            ease: 'easeInOut',
+        },
+        y: 0,
+    },
+};
+
+interface VisualizerContainerProps {
+    children: ReactNode;
+    isMobile?: boolean;
+    windowBarStyle: Platform;
+}
+
+const VisualizerContainer = memo(
+    ({ children, isMobile, windowBarStyle }: VisualizerContainerProps) => {
+        const hasWindowBar =
+            windowBarStyle === Platform.WINDOWS || windowBarStyle === Platform.MACOS;
+        return (
+            <motion.div
+                animate="open"
+                className={clsx(styles.container, {
+                    [styles.mobileContainer]: isMobile,
+                    [styles.mobileContainerWithWindowBar]: isMobile && hasWindowBar,
+                })}
+                exit="closed"
+                initial="closed"
+                transition={{ duration: 2 }}
+                variants={containerVariants}
+            >
+                {children}
+            </motion.div>
+        );
+    },
+);
+
+VisualizerContainer.displayName = 'VisualizerContainer';
+
+export const FullScreenVisualizer = () => {
+    const { setStore } = useFullScreenPlayerStoreActions();
+    const { visualizerPresentation, visualizerReturnToPlayer } = useFullScreenPlayerStore();
+    const { t } = useTranslation();
+    const { windowBarStyle } = useWindowSettings();
+    const { webAudio } = usePlaybackSettings();
+    const isLyricVisual = visualizerPresentation === 'lyricVisual' || !webAudio;
+    const visualizerType = useSettingsStore((store) => store.visualizer.type);
+    const isMobile = useIsMobile();
+
+    const location = useLocation();
+    const isOpenedRef = useRef<boolean | null>(null);
+
+    const handleCloseVisualizer = () => {
+        // While fullscreen, Escape is the browser's own "leave fullscreen" gesture.
+        // Let it drop back to the expanded-but-windowed visualizer instead of closing.
+        if (document.fullscreenElement) return;
+
+        setStore({
+            expanded: visualizerReturnToPlayer,
+            visualizerExpanded: false,
+            visualizerReturnToPlayer: false,
+        });
+    };
+
+    useHotkeys([['Escape', handleCloseVisualizer]]);
+
+    // Never leave the window stuck in fullscreen if the visualizer goes away while
+    // fullscreened (route change, close button, etc.).
+    useEffect(() => {
+        return () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            }
+        };
+    }, []);
+
+    useLayoutEffect(() => {
+        if (isOpenedRef.current !== null) {
+            setStore({ visualizerExpanded: false, visualizerReturnToPlayer: false });
+        }
+
+        isOpenedRef.current = true;
+    }, [location, setStore]);
+
+    return (
+        <VisualizerContainer isMobile={isMobile} windowBarStyle={windowBarStyle}>
+            <div className={styles.visualizerContainer} id={VISUALIZER_FULLSCREEN_TARGET_ID}>
+                {isLyricVisual && (
+                    <Group className={styles.lyricNavigation} gap="xs">
+                        <ActionIcon
+                            aria-label={t('page.fullscreenPlayer.shrinkVisual')}
+                            icon="shrink"
+                            onClick={() =>
+                                setStore({
+                                    expanded: visualizerReturnToPlayer,
+                                    visualizerExpanded: false,
+                                    visualizerReturnToPlayer: false,
+                                })
+                            }
+                            variant="subtle"
+                        />
+                        <ActionIcon
+                            aria-label={t('page.fullscreenPlayer.toggleVisualFullscreen')}
+                            icon="expand"
+                            onClick={toggleFullscreen}
+                            variant="subtle"
+                        />
+                    </Group>
+                )}
+                <div
+                    aria-label={t('page.fullscreenPlayer.visualizer')}
+                    className={styles.modeControls}
+                    role="group"
+                >
+                    {webAudio && (
+                        <button
+                            aria-pressed={!isLyricVisual}
+                            onClick={() => setStore({ visualizerPresentation: 'visualizer' })}
+                            type="button"
+                        >
+                            {t('page.fullscreenPlayer.visualizer')}
+                        </button>
+                    )}
+                    <button
+                        aria-pressed={isLyricVisual}
+                        onClick={() => setStore({ visualizerPresentation: 'lyricVisual' })}
+                        type="button"
+                    >
+                        {t('page.fullscreenPlayer.lyricVisual')}
+                    </button>
+                </div>
+                {isLyricVisual ? (
+                    <div className={styles.lyricVisualContainer}>
+                        <Lyrics fadeOutNoLyricsMessage={false} presentation="visual" />
+                    </div>
+                ) : webAudio ? (
+                    <Suspense fallback={<></>}>
+                        {visualizerType === 'butterchurn' ? (
+                            <ButterchurnVisualizer />
+                        ) : (
+                            <AudioMotionAnalyzerVisualizer />
+                        )}
+                    </Suspense>
+                ) : null}
+                {!isLyricVisual && <FullScreenVisualizerSongInfo />}
+            </div>
+        </VisualizerContainer>
+    );
+};
